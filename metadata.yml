@@ -5,7 +5,7 @@ splash:
   file: assets/image.png
 icon:
   file: assets/icon.png
-version: v0.6.0
+version: v1.0.0
 category: game
 url: https://github.com/lummi01/32Blit_Cannonhead
 

@@ -24,6 +24,7 @@ struct Player
     float shot_y;
     float shot_dx;
     int score;
+    bool timer;
 };
 
 struct Explosion
@@ -46,6 +47,10 @@ Explosion explosion[8];
 Explosion rocket;
 Wave wave;
 
+Timer cpu1;
+Timer cpu2;
+Timer sink;
+
 int menu_setting[5]{0,1,1,16,0};
 int menu_item = 4;
 
@@ -55,9 +60,25 @@ int wall[40][14];
 int level;
 
 int cpu_status = 3;
-int cpu_status2 = 3;
+int cpu_status2 = 4;
 
 int counter;
+
+void cpu1_timer(Timer &t)
+{
+    p[0].timer = true;
+}
+
+void cpu2_timer(Timer &t)
+{
+    p[1].timer = true;
+}
+
+void sinking_sound(Timer &t)
+{
+
+}
+
 
 void new_explosion(float x, float y)
 {
@@ -168,7 +189,7 @@ void start()
         {0,0,1,1,3,2,6,4,12,8,24,16,48,32,96,64,192,128,128,0},
         {0,0,1,1,17,17,273,273,4369,4369,4369,4369,4369,273,273,17,17,1,1,0},
         {0,0,256,384,192,96,48,24,12,6,3,6,12,24,48,96,192,384,256,0},
-        {0,0,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,16383,16383,0},
+        {0,0,0,0,0,3,3,3,3,3,7,6,6,14,28,120,1008,16320,0,16383},
         {0,0,0,1008,1032,2052,4098,8193,8193,8193,8193,8193,8193,4098,2052,1032,1008,0,0,0},
         {0,0,7936,4352,4352,4352,4352,8176,272,272,272,272,511,17,17,17,17,31,0,0},
         {0,0,8195,8195,0,4102,4102,0,2060,2060,0,1048,1048,0,560,560,0,352,352,0},
@@ -258,12 +279,21 @@ void player_move(int p1, int p2, int status)
 {
     if (p[p1].y>98)
     {
+        if (p[p1].y < 101)
+        {
+            channels[0].frequency = (p[p1].y - 97) * 75;
+            channels[0].trigger_attack();
+        }
         p[p1].y+=.2f;
         if (p[p1].y > 120 && !p[p1].is_shot && !p[p2].is_shot)
         {
-            if (p[p2].score>9)
+            if (p[0].score>9)
             {
-                state=p2 +2;
+                state=2;
+            }
+            else if (p[1].score>9)
+            {
+                state=3;
             }
             else
             {
@@ -297,6 +327,8 @@ void player_move(int p1, int p2, int status)
                     {
                         p[p1].shot_power = 3.5f;
                     }
+                    channels[2].frequency = 2000 + (p[p1].shot_power * 1000);
+                    channels[2].trigger_attack();
                 }
                 break;
             case 2: // shot
@@ -310,6 +342,7 @@ void player_move(int p1, int p2, int status)
                     {
                         p[p1].shot_dx = -p[p1].shot_dx;
                     }
+                    channels[3].trigger_attack();
                 }
                 break;
             case 3: // move left
@@ -325,6 +358,7 @@ void player_move(int p1, int p2, int status)
                         p[p1].y-=4;
                     }
                 }
+                p[p1].timer=false;
                 break;
             case 4: // move right
                 p[p1].xflip = false;
@@ -338,7 +372,8 @@ void player_move(int p1, int p2, int status)
                         p[p1].x++;
                         p[p1].y-=4;
                     }
-                }            
+                }
+                p[p1].timer=false;
                 break;
             case 5: // stay
                 p[p1].ani = 0;
@@ -392,11 +427,11 @@ void player2_control()
     player_move(1,0,status);
 }
 
-void cpu_control()
+void cpu_control() // CPU-Player right
 {
     switch(cpu_status)
     {
-        case 1:
+        case 1: // Shot power
         {
             if (p[1].shot_power >= 3.5f || p[1].shot_power > (p[1].x - p[0].x) * ((22 + rand() %7) *.001f))
             {
@@ -404,7 +439,7 @@ void cpu_control()
             }
             break;
         }
-        case 2:
+        case 2: // Shot
         {
             if (!p[1].is_shot)
             {
@@ -418,7 +453,7 @@ void cpu_control()
             {
                 cpu_status = 4;
             }
-            else if (p[1].x>p[0].x -8 && rand() %50<1)
+            else if (p[1].x>p[0].x -8 && rand() %100<((menu_setting[2] *2) +1))
             {
                 cpu_status = 1;
             }
@@ -430,14 +465,18 @@ void cpu_control()
             {
                 cpu_status = 3;
             }
-            else if (p[1].x<p[0].x +8 && rand() %50<1)
+            else if (p[1].x<p[0].x +8 && rand() %100<((menu_setting[2] *2) +1))
             {
                 cpu_status = 1;
             }
             break;
         }
     }
-    player_move(1,0,cpu_status);
+
+    if (cpu_status < 3 || p[1].timer == true)
+    {
+        player_move(1,0,cpu_status);
+    }
 }
 
 void cpu_control2()
@@ -446,7 +485,7 @@ void cpu_control2()
     {
         case 1:
         {
-            if (p[0].shot_power >= 3.5f || p[0].shot_power > (p[1].x - p[0].x) * .025f) //((22 + rand() %7) *.001f))
+            if (p[0].shot_power >= 3.5f || p[0].shot_power > (p[1].x - p[0].x) * ((22 + rand() %7) *.001f))//(p[1].x - p[0].x) * .025f)
             {
                 cpu_status2 = 2;
             }
@@ -466,7 +505,7 @@ void cpu_control2()
             {
                 cpu_status2 = 4;
             }
-            else if (p[0].x>p[1].x -8 && rand() %50<1)
+            else if (p[0].x>p[1].x -8 && rand() %100<((menu_setting[2] *2) +1))
             {
                 cpu_status2 = 1;
             }
@@ -478,14 +517,18 @@ void cpu_control2()
             {
                 cpu_status2 = 3;
             }
-            else if (p[0].x<p[1].x +8 && rand() %50<1)
+            else if (p[0].x<p[1].x +8 && rand() %100<((menu_setting[2] *2) +1))
             {
                 cpu_status2 = 1;
             }
             break;
         }
     }
-    player_move(0,1,cpu_status2);
+
+    if (cpu_status2 < 3 || p[0].timer == true)
+    {
+        player_move(0,1,cpu_status2);
+    }
 }
 
 void update_shot(int p1, int p2)
@@ -500,6 +543,7 @@ void update_shot(int p1, int p2)
             del_ground(p[p1].shot_x, p[p1].shot_y);
             p[p1].is_shot = false;
             p[p1].shot_power = 0;
+            channels[4].trigger_attack();
         }
         if (p[p1].shot_y>104)
         {
@@ -513,6 +557,7 @@ void update_shot(int p1, int p2)
             p[p1].score++;
             p[p2].ani = 3;
             p[p2].dy = 2;
+            channels[1].trigger_attack();
         }
     }
 }
@@ -523,10 +568,12 @@ void update_menu()
     if (buttons.released & Button::DPAD_UP && menu_item>0)
     {
         menu_item--;
+        channels[5].trigger_attack();
     }
     else if (buttons.released & Button::DPAD_DOWN && menu_item<4)
     {
         menu_item++;
+        channels[5].trigger_attack();
     }
     else if (buttons.released & Button::DPAD_LEFT)
     {
@@ -534,6 +581,10 @@ void update_menu()
         if (menu_setting[menu_item]<0)
         {
             menu_setting[menu_item]=menu_max[menu_item];
+        }
+        if (menu_item<4)
+        {
+            channels[6].trigger_attack();
         }
     }
     else if (buttons.released & Button::DPAD_RIGHT)
@@ -543,15 +594,26 @@ void update_menu()
         {
             menu_setting[menu_item]=0;
         }
+        if (menu_item<4)
+        {
+            channels[6].trigger_attack();
+        }
     }
     else if (buttons.released & Button::A && menu_item==4)
     {
+        channels[6].trigger_attack();
         if (menu_setting[3]>=LEVEL)
         {
             menu_setting[3] = LEVEL + (rand()%LEVEL);
         }
         p[0].score = 0;
         p[1].score = 0;
+
+        cpu1.init(cpu1_timer, 45 - (menu_setting[2]*20), -1);
+        cpu1.start();
+        cpu2.init(cpu2_timer, 45 - (menu_setting[2]*20), -1);
+        cpu2.start();
+
         state = 1;
         start();
     }
@@ -564,7 +626,7 @@ void render_menu()
         {"human","cpu"},
         {"human","cpu"},
         {"smart","normal","stupid"},
-        {"islands","up & down","trees","double 'v'","walls","circles","boxes","big 'x'","bevels","pong-styl","basic","shelves","graph","pirates","pyramid","bubbles","mixed"},
+        {"islands","up & down","trees","double 'v'","atari","circles","boxes","big 'x'","bevels","pong-styl","basic","shelves","graph","pirates","pyramid","bubbles","mixed"},
         {"start   "}};
     int select_y[5]={38,50,69,90,104};
 
@@ -620,6 +682,7 @@ void update_winner(int p1)
     if (rocket.dy>=0)
     {
         new_explosion(rocket.x,rocket.y);
+        channels[4].trigger_attack();
         rocket.x = 70 + rand() %20;
         rocket.dx = (rand() %20 -10) *.1f;
         rocket.y = 120;
@@ -660,13 +723,61 @@ void init()
     set_screen_mode(ScreenMode::lores);
     screen.sprites = Surface::load(asset_sprites);
 
-    channels[0].waveforms = Waveform::NOISE; 
-    channels[0].volume = 0x0fff;
-    channels[0].frequency = 1000;
+    channels[0].waveforms = Waveform::SQUARE; //water
+    channels[0].volume = 7500;
+    channels[0].frequency = 0;
     channels[0].attack_ms = 5;
-    channels[0].decay_ms = 50;
-    channels[0].sustain = 0;
+    channels[0].decay_ms = 75;
+    channels[0].sustain = 10;
     channels[0].release_ms = 5;
+
+    channels[1].waveforms = Waveform::SAW; //player hit
+    channels[1].volume = 7500;
+    channels[1].frequency = 400;
+    channels[1].attack_ms = 5;
+    channels[1].decay_ms = 400;
+    channels[1].sustain = 200;
+    channels[1].release_ms = 5;
+
+    channels[2].waveforms = Waveform::NOISE; //power
+    channels[2].volume = 1500;
+    channels[2].frequency = 0;
+    channels[2].attack_ms = 5;
+    channels[2].decay_ms = 100;
+    channels[2].sustain = 0;
+    channels[2].release_ms = 5;
+
+    channels[3].waveforms = Waveform::NOISE; //shot
+    channels[3].volume = 3000;
+    channels[3].frequency = 8000;
+    channels[3].attack_ms = 100;
+    channels[3].decay_ms = 200;
+    channels[3].sustain = 100;
+    channels[3].release_ms = 5;
+
+    channels[4].waveforms = Waveform::NOISE; //ground hit
+    channels[4].volume = 5000;
+    channels[4].frequency = 8000;
+    channels[4].attack_ms = 5;
+    channels[4].decay_ms = 250;
+    channels[4].sustain = 0;
+    channels[4].release_ms = 5;
+
+    channels[5].waveforms = Waveform::SINE; //menu tick
+    channels[5].volume = 7500;
+    channels[5].frequency = 600;
+    channels[5].attack_ms = 5;
+    channels[5].decay_ms = 80;
+    channels[5].sustain = 0;
+    channels[5].release_ms = 5;
+
+    channels[6].waveforms = Waveform::SAW; //menu switch
+    channels[6].volume = 6000;
+    channels[6].frequency = 100;
+    channels[6].attack_ms = 5;
+    channels[6].decay_ms = 200;
+    channels[6].sustain = 0;
+    channels[6].release_ms = 5;
 }
 
 //
@@ -690,7 +801,17 @@ void render(uint32_t time)
             screen.pen = Pen(255-i,32,255);
             screen.rectangle(Rect(0,i,160,8));
         }
-
+        screen.pen = Pen(0, 0, 0);
+        screen.text(std::to_string(p[0].score), font, Point(9, 11)); 
+        screen.text(std::to_string(p[1].score), font, Point(154, 11), true, TextAlign::top_right); 
+        if (p[0].shot_power > 0)
+        {
+            screen.rectangle(Rect(9,5,p[0].shot_power *15,3));
+        }
+        if (p[1].shot_power > 0)
+        {
+            screen.rectangle(Rect(154 -(p[1].shot_power*15),5,p[1].shot_power *15,3));
+        }
         screen.pen = Pen(255, 0, 0);
         screen.text(std::to_string(p[0].score), font, Point(8, 10)); 
         if (p[0].shot_power > 0)
@@ -749,6 +870,7 @@ void update(uint32_t time)
     {
         menu_setting[0]==0? player_control(): cpu_control2();
         menu_setting[1]==0? player2_control(): cpu_control();
+
         if (buttons & blit::Button::MENU)
         {
             state=0;
