@@ -6,6 +6,9 @@ assets.cpp:
   assets/spritesheet.png:
     name: asset_sprites
 
+  assets/image.png:
+    name: asset_image
+
   assets/8x14font.png:
     name: font8x14
     type: font/image
